@@ -23,38 +23,24 @@ interface AnalysisResults {
     eligibleForLongTermGains: boolean;
   };
 }
-import { wrapFetchWithPayment } from "x402-fetch";
-import { getWalletClient } from "wagmi/actions";
-import { createConfig, http } from "@wagmi/core";
-import { mainnet, base, baseSepolia } from "@wagmi/core/chains";
-import { createClient } from "viem";
+
 
 export default function App() {
   const { setFrameReady, isFrameReady, context } = useMiniKit();
   const [frameAdded, setFrameAdded] = useState(false);
-  const [isInMiniApp, setIsInMiniApp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [targetAddress, setTargetAddress] = useState("");
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ username: string; token: string } | null>(null);
 
   const addFrame = useAddFrame();
-
-  const config = createConfig({
-    chains: [mainnet, base, baseSepolia],
-    client({ chain }) {
-      return createClient({ chain, transport: http() });
-    },
-  });
 
   // Initialize Farcaster Mini App SDK
   useEffect(() => {
     const initMiniApp = async () => {
       try {
         await sdk.actions.ready();
-        const isInMiniApp = await sdk.isInMiniApp();
-        setIsInMiniApp(isInMiniApp);
       } catch (error) {
         console.log('Not running in Mini App context or SDK not available:', error);
       }
@@ -78,7 +64,7 @@ export default function App() {
   const handleSignIn = useCallback(async () => {
     try {
       const nonce = Math.random().toString(36).substring(7);
-      const result = await sdk.actions.signIn({ nonce });
+      await sdk.actions.signIn({ nonce });
       setUser({ username: "farcaster_user", token: "mock_token" });
       setMessage("Successfully signed in with Farcaster!");
     } catch (error) {
@@ -166,12 +152,12 @@ export default function App() {
   }, [context, frameAdded, handleAddFrame]);
 
   return (
-    <div className="min-h-screen bg-[#0052ff] text-white">
+    <div className="min-h-screen font-pixel bg-[#0052ff] text-white">
       {/* Header */}
       <header className="px-6 py-4">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="text-lg font-semibold font-pixel">
-            DeFi Tax Analyzer
+            Checkraa
           </div>
           
           <div className="flex items-center space-x-4">
@@ -199,17 +185,17 @@ export default function App() {
         <div className="max-w-4xl mx-auto">
           {/* Hero Section */}
           <div className="text-center mb-12">
-            <h1 className="text-5xl font-bold mb-4">
-              DeFi Tax Challenge
+            <h1 className="text-5xl font-bold mb-4 font-pixel">
+              Checkraa
             </h1>
-            <p className="text-xl text-white/80 mb-8">
+            <p className="text-xl text-white/80 mb-8 font-pixel">
               Long-Term Capital Gains Analysis
             </p>
           </div>
 
           {/* Analysis Details */}
           <div className="mb-12">
-            <h2 className="text-2xl font-semibold mb-6">Analysis Details</h2>
+            <h2 className="text-2xl font-semibold mb-6 font-pixel">Analysis Details</h2>
             
             <div>
               <p>
@@ -281,7 +267,7 @@ export default function App() {
           {/* Results Section */}
           {analysisResults && (
             <div className="mb-12">
-              <h2 className="text-2xl font-semibold mb-6">Analysis Results</h2>
+              <h2 className="text-2xl font-semibold mb-6 font-pixel">Analysis Results</h2>
               
               {/* Summary Stats */}
               <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -313,7 +299,7 @@ export default function App() {
               {/* Long-term Positions List */}
               {analysisResults.longTermPositions?.length > 0 && (
                 <div className="mb-8">
-                  <h3 className="text-lg font-medium mb-4">Long-term Positions (Tax Optimized)</h3>
+                  <h3 className="text-lg font-medium mb-4 font-pixel">Long-term Positions (Tax Optimized)</h3>
                   <div className="space-y-4">
                     {analysisResults.longTermPositions.map((position, index) => (
                       <div key={index} className="p-4 bg-white/5 border border-white/10 rounded-lg">
@@ -359,7 +345,7 @@ export default function App() {
 
           {/* Instructions */}
           <div className="p-6 bg-white/5 border border-white/10 rounded-lg">
-            <h3 className="text-lg font-medium mb-4">How It Works</h3>
+            <h3 className="text-lg font-medium mb-4 font-pixel">How It Works</h3>
             <div className="space-y-3 text-sm text-white/80">
               <div className="flex items-start space-x-3">
                 <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</div>

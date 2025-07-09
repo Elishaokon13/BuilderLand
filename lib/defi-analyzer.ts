@@ -47,7 +47,7 @@ export async function getTokenPositions(walletAddress: `0x${string}`): Promise<T
         });
 
         // Skip if no balance
-        if (balance === 0n) continue;
+        if (balance === BigInt(0)) continue;
 
         // Get decimals for formatting
         const decimals = await client.readContract({
@@ -58,7 +58,7 @@ export async function getTokenPositions(walletAddress: `0x${string}`): Promise<T
 
         // Get first Transfer event to this address (simplified approach)
         const currentBlock = await client.getBlockNumber();
-        const fromBlock = currentBlock > 100000n ? currentBlock - 100000n : 0n;
+        const fromBlock = currentBlock > BigInt(100000) ? currentBlock - BigInt(100000) : BigInt(0);
         
         const transfers = await client.getLogs({
           address: token.address,
