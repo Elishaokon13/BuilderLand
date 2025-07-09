@@ -1,4 +1,11 @@
-import type { FrameNotificationDetails } from "@farcaster/frame-sdk";
+// Temporarily commented out due to Frame SDK version conflicts
+// import type { FrameNotificationDetails } from "@farcaster/frame-sdk";
+
+// Fallback type to maintain compatibility
+type FrameNotificationDetails = {
+  url: string;
+  token: string;
+} | null;
 import { redis } from "./redis";
 
 const notificationServiceKey =

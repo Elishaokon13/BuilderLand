@@ -1,8 +1,23 @@
-import {
-  FrameNotificationDetails,
-  type SendNotificationRequest,
-  sendNotificationResponseSchema,
-} from "@farcaster/frame-sdk";
+// Temporarily commented out due to Frame SDK version conflicts
+// import {
+//   FrameNotificationDetails,
+//   type SendNotificationRequest,
+//   sendNotificationResponseSchema,
+// } from "@farcaster/frame-sdk";
+
+// Fallback types to maintain compatibility
+type FrameNotificationDetails = {
+  url: string;
+  token: string;
+} | null;
+
+type SendNotificationRequest = {
+  notificationId: string;
+  title: string;
+  body: string;
+  targetUrl: string;
+  tokens: string[];
+};
 import { getUserNotificationDetails } from "@/lib/notification";
 
 const appUrl = process.env.NEXT_PUBLIC_URL || "";
@@ -51,12 +66,9 @@ export async function sendFrameNotification({
   const responseJson = await response.json();
 
   if (response.status === 200) {
-    const responseBody = sendNotificationResponseSchema.safeParse(responseJson);
-    if (responseBody.success === false) {
-      return { state: "error", error: responseBody.error.errors };
-    }
-
-    if (responseBody.data.result.rateLimitedTokens.length) {
+    // Simplified response handling without schema validation
+    // TODO: Restore proper validation when Frame SDK version conflicts are resolved
+    if (responseJson?.result?.rateLimitedTokens?.length) {
       return { state: "rate_limit" };
     }
 

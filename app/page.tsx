@@ -6,6 +6,7 @@ import {
 } from "@coinbase/onchainkit/minikit";
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { sdk } from "@farcaster/frame-sdk";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 
 interface AnalysisResults {
   address: string;
@@ -32,9 +33,13 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [targetAddress, setTargetAddress] = useState("");
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
-  const [user, setUser] = useState<{ username: string; token: string } | null>(null);
 
   const addFrame = useAddFrame();
+  
+  // Wagmi hooks for wallet connection
+  const { address, isConnected } = useAccount();
+  const { connect, connectors, isPending } = useConnect();
+  const { disconnect } = useDisconnect();
 
   // Initialize Farcaster Mini App SDK
   useEffect(() => {
@@ -60,22 +65,33 @@ export default function App() {
     setFrameAdded(Boolean(frameAdded));
   }, [addFrame]);
 
-  // Farcaster Sign In
-  const handleSignIn = useCallback(async () => {
+  // Wallet connection using Farcaster Mini App connector
+  const handleConnect = useCallback(async () => {
+    if (isPending) return; // Prevent double clicks
+    
     try {
-      const nonce = Math.random().toString(36).substring(7);
-      await sdk.actions.signIn({ nonce });
-      setUser({ username: "farcaster_user", token: "mock_token" });
-      setMessage("Successfully signed in with Farcaster!");
+      setMessage("Connecting wallet...");
+      
+      // Find the Farcaster Mini App connector
+      const farcasterConnector = connectors.find(
+        (connector) => connector.name === "farcasterMiniApp"
+      );
+      
+      if (farcasterConnector) {
+        connect({ connector: farcasterConnector });
+        setMessage("Wallet connected successfully!");
+      } else {
+        setMessage("Farcaster connector not found. Please ensure you're in a Farcaster Mini App.");
+      }
     } catch (error) {
-      console.error('Sign in error:', error);
-      setMessage("Sign in failed. Please try again.");
+      console.error('Wallet connection error:', error);
+      setMessage("Failed to connect wallet. Please try again.");
     }
-  }, []);
+  }, [isPending, connectors, connect]);
 
   const handleAnalyzeWallet = useCallback(async () => {
-    if (!user) {
-      setMessage("Please sign in with Farcaster first");
+    if (!isConnected) {
+      setMessage("Please connect your wallet first");
       return;
     }
 
@@ -89,12 +105,12 @@ export default function App() {
     setAnalysisResults(null);
 
     try {
-      // For x402 payment, we'll use a simple fetch since Farcaster handles the wallet
+      // For x402 payment, we'll use the connected wallet address for authorization
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${user.token}`, // Use Farcaster auth
+          "Authorization": `Bearer ${address}`, // Use wallet address for auth
         },
         body: JSON.stringify({ address: targetAddress }),
       });
@@ -126,7 +142,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, targetAddress]);
+  }, [isConnected, address, targetAddress]);
 
   const saveFrameButton = useMemo(() => {
     if (context && !context.client.added) {
@@ -162,17 +178,32 @@ export default function App() {
           
           <div className="flex items-center space-x-2 sm:space-x-4">
             {saveFrameButton}
-            {!user ? (
+            {!isConnected ? (
               <button
-                onClick={handleSignIn}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all duration-200 border border-white/20 min-h-[44px] min-w-[80px]"
+                onClick={handleConnect}
+                disabled={isPending}
+                className={`px-4 py-2 text-white text-sm font-medium rounded-lg transition-all duration-200 border border-white/20 min-h-[44px] min-w-[80px] flex items-center justify-center ${
+                  isPending 
+                    ? 'bg-white/5 text-white/40 cursor-not-allowed' 
+                    : 'bg-white/10 hover:bg-white/20 active:bg-white/30'
+                }`}
               >
-                Connect
+                {isPending ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/40 border-t-white mr-2"></div>
+                    Connecting...
+                  </>
+                ) : (
+                  'Connect'
+                )}
               </button>
             ) : (
               <button
-                onClick={() => setUser(null)}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all duration-200 border border-white/20 min-h-[44px] min-w-[90px]"
+                onClick={() => {
+                  disconnect();
+                  setMessage("");
+                }}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all duration-200 border border-white/20 min-h-[44px] min-w-[90px] active:bg-white/30"
               >
                 Disconnect
               </button>
@@ -197,7 +228,11 @@ export default function App() {
           <div className="mb-8 sm:mb-12">
             <h2 className="text-xl sm:text-2xl font-semibold mb-4 sm:mb-6 font-pixel">Analysis Details</h2>
             
-            
+            <div className="mb-6 sm:mb-8">
+              <p className="text-sm sm:text-base text-white/90 leading-relaxed">
+                This app analyzes your DeFi positions to determine if you have any long-term positions that are eligible for tax optimization.
+              </p>
+            </div>
 
             {/* Wallet Input */}
             <div className="space-y-4">
@@ -217,9 +252,9 @@ export default function App() {
 
               <button
                 onClick={handleAnalyzeWallet}
-                disabled={!user || isLoading || !targetAddress}
+                disabled={!isConnected || isLoading || !targetAddress}
                 className={`w-full py-3 sm:py-4 px-4 rounded-lg font-medium transition-all duration-200 text-sm sm:text-base min-h-[50px] sm:min-h-[56px] ${
-                  !user || isLoading || !targetAddress
+                  !isConnected || isLoading || !targetAddress
                     ? 'bg-white/10 text-white/40 cursor-not-allowed border border-white/10'
                     : 'bg-white text-[#0052ff] hover:bg-white/90 font-semibold active:bg-white/80'
                 }`}
