@@ -23,7 +23,7 @@ import { sdk } from "@farcaster/frame-sdk";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { getWalletClient } from "wagmi/actions";
 import { createConfig, http } from "@wagmi/core";
-import { base, baseSepolia } from "@wagmi/core/chains";
+import { base, baseSepolia, mainnet } from "@wagmi/core/chains";
 import { createClient } from "viem";
 
 export default function App() {
@@ -32,12 +32,14 @@ export default function App() {
   const [isInMiniApp, setIsInMiniApp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [targetAddress, setTargetAddress] = useState("");
+  const [analysisResults, setAnalysisResults] = useState(null);
   const { address, isConnected, connector, chainId } = useAccount();
 
   const addFrame = useAddFrame();
 
   const config = createConfig({
-    chains: [base, baseSepolia],
+    chains: [mainnet, base, baseSepolia],
     client({ chain }) {
       return createClient({ chain, transport: http() });
     },
@@ -117,6 +119,64 @@ export default function App() {
     }
   }, [isConnected, address, chainId, connector, config]);
 
+  const handleAnalyzeWallet = useCallback(async () => {
+    if (!isConnected) {
+      setMessage("Please connect your wallet first");
+      return;
+    }
+
+    if (!targetAddress || targetAddress.length < 10) {
+      setMessage("Please enter a valid wallet address");
+      return;
+    }
+
+    setIsLoading(true);
+    setMessage("");
+    setAnalysisResults(null);
+
+    const walletClient = await getWalletClient(config, {
+      account: address,
+      chainId: chainId,
+      connector: connector,
+    });
+
+    if (!walletClient) {
+      setMessage("Wallet client not available");
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchWithPayment = wrapFetchWithPayment(
+      fetch,
+      walletClient as unknown as Parameters<typeof wrapFetchWithPayment>[1]
+    );
+
+    try {
+      const response = await fetchWithPayment("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ address: targetAddress }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAnalysisResults(data);
+      setMessage(`Analysis complete! Found ${data.longTermPositions?.length || 0} long-term positions.`);
+    } catch (error) {
+      console.error("Error analyzing wallet:", error);
+      setMessage(
+        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isConnected, address, chainId, connector, config, targetAddress]);
+
   const saveFrameButton = useMemo(() => {
     if (context && !context.client.added) {
       return (
@@ -150,7 +210,7 @@ export default function App() {
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-white">x402 Mini App Template</h1>
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-white">DeFi Tax Analyzer</h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {isInMiniApp ? 'Running as Mini App' : 'Running in browser'}
               </p>
@@ -184,10 +244,10 @@ export default function App() {
           {/* Hero Section */}
           <div className="text-center">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-              Welcome to Your Mini App
+              DeFi Long-Term Capital Gains Analyzer
             </h2>
             <p className="text-gray-600 dark:text-gray-300">
-              This is a clean template with x402, OnchainKit, and Farcaster as a mini app.
+              Analyze any wallet to find DeFi positions held for >1 year (eligible for long-term capital gains)
             </p>
           </div>
 
@@ -226,18 +286,34 @@ export default function App() {
             </div>
           </div>
 
-          {/* Protected Action */}
+          {/* DeFi Analysis */}
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Protected Action
+              Analyze Wallet for Long-Term Positions
             </h3>
             <p className="text-gray-600 dark:text-gray-300 mb-6">
-              This button calls the x402 protected API endpoint.
+              Enter any Ethereum wallet address to analyze DeFi positions held for >1 year. Analysis costs $1.
             </p>
+            
+            {/* Wallet Address Input */}
+            <div className="mb-4">
+              <label htmlFor="wallet-address" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Wallet Address
+              </label>
+              <input
+                id="wallet-address"
+                type="text"
+                value={targetAddress}
+                onChange={(e) => setTargetAddress(e.target.value)}
+                placeholder="0x... or ENS name"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+
             <button
-              onClick={handleProtectedAction}
-              disabled={!isConnected || isLoading}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${!isConnected || isLoading
+              onClick={handleAnalyzeWallet}
+              disabled={!isConnected || isLoading || !targetAddress}
+              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${!isConnected || isLoading || !targetAddress
                 ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed text-gray-500 dark:text-gray-400'
                 : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
@@ -245,10 +321,10 @@ export default function App() {
               {isLoading ? (
                 <div className="flex items-center justify-center space-x-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                  <span>Processing...</span>
+                  <span>Analyzing...</span>
                 </div>
               ) : (
-                'Call Protected API'
+                'Analyze Wallet ($1)'
               )}
             </button>
             {message && (
@@ -270,18 +346,50 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* Results Display */}
+            {analysisResults && (
+              <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+                  Analysis Results
+                </h4>
+                <div className="space-y-3">
+                  {analysisResults.longTermPositions?.length > 0 ? (
+                    analysisResults.longTermPositions.map((position, index) => (
+                      <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded border">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {position.symbol || 'Unknown Token'}
+                          </span>
+                          <span className="text-sm text-green-600 dark:text-green-400">
+                            Long-term ({position.daysHeld} days)
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                          Balance: {position.balance} | First acquired: {position.firstAcquired}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-600 dark:text-gray-300">
+                      No long-term positions found in this wallet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Instructions */}
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">
-              Getting Started
+              How It Works
             </h3>
             <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-              <p>• Connect your wallet using the button in the header</p>
-              <p>• The app will automatically detect if it&apos;s running in a Farcaster Mini App</p>
-              <p>• Use the &quot;Call Protected API&quot; button to test the protected endpoint</p>
-              <p>• Customize this template by adding your own features and logic</p>
+              <p>• Connect your wallet to pay for analysis with crypto</p>
+              <p>• Enter any Ethereum wallet address you want to analyze</p>
+              <p>• Pay $1 to get a comprehensive analysis of DeFi positions held >1 year</p>
+              <p>• Use results to optimize your tax strategy for long-term capital gains</p>
             </div>
           </div>
         </div>

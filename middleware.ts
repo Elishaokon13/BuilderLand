@@ -24,12 +24,19 @@ export const middleware = paymentMiddleware(
         description: "Protected route",
       },
     },
+    "/api/analyze": {
+      price: "$1.00",
+      network,
+      config: {
+        description: "DeFi position analysis for long-term capital gains",
+      },
+    },
   },
   facilitator,
 );
 
 // Configure which paths the middleware should run on
 export const config = {
-  matcher: ["/api/protected"],
+  matcher: ["/api/protected", "/api/analyze"],
   runtime: "nodejs",
 };
