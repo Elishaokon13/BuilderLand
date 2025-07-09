@@ -37,7 +37,7 @@ export default function App() {
   const addFrame = useAddFrame();
   
   // Wagmi hooks for wallet connection
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
 
@@ -105,17 +105,19 @@ export default function App() {
     setAnalysisResults(null);
 
     try {
-      // For x402 payment, we'll use the connected wallet address for authorization
+      // Simple fetch - x402 middleware will handle payment interception
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${address}`, // Use wallet address for auth
         },
         body: JSON.stringify({ address: targetAddress }),
       });
 
       if (!response.ok) {
+        if (response.status === 402) {
+          throw new Error("Payment required. Please ensure you have sufficient funds in your connected wallet.");
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -127,7 +129,9 @@ export default function App() {
       
       let errorMessage = "Unknown error occurred";
       if (error instanceof Error) {
-        if (error.message.includes("payment")) {
+        if (error.message.includes("402")) {
+          errorMessage = "Payment failed. Please ensure you have sufficient funds in your wallet and try again.";
+        } else if (error.message.includes("payment")) {
           errorMessage = "Payment failed. Please ensure you have sufficient funds and try again.";
         } else if (error.message.includes("network") || error.message.includes("RPC")) {
           errorMessage = "Network error. Please check your connection and try again.";
@@ -142,7 +146,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, address, targetAddress]);
+  }, [isConnected, targetAddress]);
 
   const saveFrameButton = useMemo(() => {
     if (context && !context.client.added) {
