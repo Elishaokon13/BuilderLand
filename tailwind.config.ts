@@ -10,6 +10,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         'orbitron': ['var(--font-orbitron)', 'monospace'],
+        'pixel': ['var(--font-pixel)', 'monospace'],
       },
       colors: {
         background: "var(--background)",

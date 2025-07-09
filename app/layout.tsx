@@ -1,7 +1,7 @@
 import "./theme.css";
 import "@coinbase/onchainkit/styles.css";
 import type { Metadata, Viewport } from "next";
-import { Inter, Orbitron } from "next/font/google";
+import { Inter, Orbitron, Press_Start_2P } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { type ReactNode } from "react";
@@ -12,6 +12,13 @@ const orbitron = Orbitron({
   subsets: ["latin"],
   variable: "--font-orbitron",
   weight: ["400", "500", "600", "700", "800", "900"]
+});
+
+// Press Start 2P for pixelated look
+const pressStart2P = Press_Start_2P({
+  subsets: ["latin"],
+  variable: "--font-pixel",
+  weight: "400"
 });
 
 export const metadata: Metadata = {
@@ -119,7 +126,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://auth.farcaster.xyz" />
       </head>
-      <body className={`${inter.className} ${orbitron.variable} h-full antialiased bg-[#0052ff] text-white`}>
+      <body className={`${inter.className} ${orbitron.variable} ${pressStart2P.variable} h-full antialiased bg-[#0052ff] text-white`}>
         <Providers>
           {children}
         </Providers>

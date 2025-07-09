@@ -170,7 +170,7 @@ export default function App() {
       {/* Header */}
       <header className="px-6 py-4">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div className="text-lg font-semibold">
+          <div className="text-lg font-semibold font-pixel">
             DeFi Tax Analyzer
           </div>
           
