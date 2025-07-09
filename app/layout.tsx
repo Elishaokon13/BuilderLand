@@ -1,32 +1,38 @@
 import "./theme.css";
 import "@coinbase/onchainkit/styles.css";
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Orbitron } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { type ReactNode } from "react";
+import React from "react";
 
 const inter = Inter({ subsets: ["latin"] });
+const orbitron = Orbitron({ 
+  subsets: ["latin"],
+  variable: "--font-orbitron",
+  weight: ["400", "500", "600", "700", "800", "900"]
+});
 
 export const metadata: Metadata = {
-  title: "x402 Mini App Template",
-  description: "A clean template with x402, OnchainKit, and Farcaster as a mini app.",
-  keywords: ["mini app", "x402", "onchainkit", "farcaster", "web3"],
-  authors: [{ name: "Example Team" }],
+  title: "DeFi Tax Analyzer",
+  description: "Analyze DeFi positions for long-term capital gains optimization. Pay $1, get instant tax insights.",
+  keywords: ["defi", "tax", "capital gains", "crypto", "ethereum", "base", "farcaster"],
+  authors: [{ name: "DeFi Tax Team" }],
 
   // Open Graph metadata for social sharing and embeds
   openGraph: {
-    title: "x402 Mini App Template",
-    description: "A clean template with x402, OnchainKit, and Farcaster as a mini app.",
+    title: "DeFi Tax Analyzer",
+    description: "Analyze DeFi positions for long-term capital gains optimization. Pay $1, get instant tax insights.",
     type: "website",
     url: process.env.NEXT_PUBLIC_URL || "https://example.com/",
-    siteName: "x402 Mini App",
+    siteName: "DeFi Tax Analyzer",
     images: [
       {
-        url: process.env.NEXT_PUBLIC_APP_HERO_IMAGE || "/app-logo.png",
+        url: process.env.NEXT_PUBLIC_APP_HERO_IMAGE || "/hero.png",
         width: 1200,
         height: 630,
-        alt: "x402 Mini App Template",
+        alt: "DeFi Tax Analyzer",
       },
     ],
   },
@@ -34,15 +40,15 @@ export const metadata: Metadata = {
   // Twitter Card metadata
   twitter: {
     card: "summary_large_image",
-    title: "x402 Mini App Template",
-    description: "A clean template with x402, OnchainKit, and Farcaster as a mini app.",
-    images: [process.env.NEXT_PUBLIC_APP_HERO_IMAGE || "/app-logo.png"],
+    title: "DeFi Tax Analyzer",
+    description: "Analyze DeFi positions for long-term capital gains optimization. Pay $1, get instant tax insights.",
+    images: [process.env.NEXT_PUBLIC_APP_HERO_IMAGE || "/hero.png"],
   },
 
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "x402 Mini App",
+    title: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "DeFi Tax Analyzer",
   },
   formatDetection: {
     telephone: false,
@@ -58,10 +64,10 @@ export const metadata: Metadata = {
       version: "next",
       imageUrl: process.env.NEXT_PUBLIC_APP_HERO_IMAGE,
       button: {
-        title: `Launch ${process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "x402 Mini App"}`,
+        title: `Launch ${process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "DeFi Tax Analyzer"}`,
         action: {
           type: "launch_frame",
-          name: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "x402 Mini App",
+          name: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "DeFi Tax Analyzer",
           url: process.env.NEXT_PUBLIC_URL,
           splashImageUrl: process.env.NEXT_PUBLIC_SPLASH_IMAGE,
           splashBackgroundColor: process.env.NEXT_PUBLIC_SPLASH_BACKGROUND_COLOR,
@@ -78,8 +84,8 @@ export const viewport: Viewport = {
   userScalable: false,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+    { media: "(prefers-color-scheme: light)", color: "#0052ff" },
+    { media: "(prefers-color-scheme: dark)", color: "#001829" },
   ],
 };
 
@@ -96,7 +102,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content={process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "x402 Mini App"} />
+        <meta name="apple-mobile-web-app-title" content={process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "DeFi Tax Analyzer"} />
 
         {/* Prevent zooming and ensure proper scaling in mini apps */}
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -113,7 +119,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://auth.farcaster.xyz" />
       </head>
-      <body className={`${inter.className} h-full antialiased bg-background`}>
+      <body className={`${inter.className} ${orbitron.variable} h-full antialiased bg-[#0052ff] text-white`}>
         <Providers>
           {children}
         </Providers>

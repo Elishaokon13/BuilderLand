@@ -4,26 +4,29 @@ import {
   useMiniKit,
   useAddFrame,
 } from "@coinbase/onchainkit/minikit";
-import {
-  Name,
-  Identity,
-  Address,
-  Avatar,
-  EthBalance,
-} from "@coinbase/onchainkit/identity";
-import {
-  ConnectWallet,
-  Wallet,
-  WalletDropdown,
-  WalletDropdownDisconnect,
-} from "@coinbase/onchainkit/wallet";
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useAccount } from "wagmi";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { sdk } from "@farcaster/frame-sdk";
+
+interface AnalysisResults {
+  address: string;
+  analysisDate: string;
+  longTermPositions: Array<{
+    symbol: string;
+    balance: string;
+    firstAcquired: string;
+    daysHeld: number;
+    tokenAddress: string;
+  }>;
+  summary: {
+    totalLongTermPositions: number;
+    totalShortTermPositions: number;
+    eligibleForLongTermGains: boolean;
+  };
+}
 import { wrapFetchWithPayment } from "x402-fetch";
 import { getWalletClient } from "wagmi/actions";
 import { createConfig, http } from "@wagmi/core";
-import { base, baseSepolia, mainnet } from "@wagmi/core/chains";
+import { mainnet, base, baseSepolia } from "@wagmi/core/chains";
 import { createClient } from "viem";
 
 export default function App() {
@@ -33,8 +36,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [targetAddress, setTargetAddress] = useState("");
-  const [analysisResults, setAnalysisResults] = useState(null);
-  const { address, isConnected, connector, chainId } = useAccount();
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
+  const [user, setUser] = useState<any>(null);
 
   const addFrame = useAddFrame();
 
@@ -71,57 +74,22 @@ export default function App() {
     setFrameAdded(Boolean(frameAdded));
   }, [addFrame]);
 
-  const handleProtectedAction = useCallback(async () => {
-    if (!isConnected) {
-      setMessage("Please connect your wallet first");
-      return;
-    }
-
-    setIsLoading(true);
-    setMessage("");
-
-    const walletClient = await getWalletClient(config, {
-      account: address,
-      chainId: chainId,
-      connector: connector,
-    });
-
-    if (!walletClient) {
-      setMessage("Wallet client not available");
-      return;
-    }
-
-    // For x402-fetch, we need to pass the wallet client's account
-    const fetchWithPayment = wrapFetchWithPayment(
-      fetch,
-      walletClient as unknown as Parameters<typeof wrapFetchWithPayment>[1]
-    );
-
+  // Farcaster Sign In
+  const handleSignIn = useCallback(async () => {
     try {
-      const response = await fetchWithPayment("/api/protected", {
-        method: "GET",
-      });
-
-      if (!response.ok) {
-        console.log(response)
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setMessage(`Success! Response: ${JSON.stringify(data)}`);
+      const nonce = Math.random().toString(36).substring(7);
+      const result = await sdk.actions.signIn({ nonce });
+      setUser({ username: "farcaster_user", token: "mock_token" });
+      setMessage("Successfully signed in with Farcaster!");
     } catch (error) {
-      console.error("Error calling protected API:", error);
-      setMessage(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    } finally {
-      setIsLoading(false);
+      console.error('Sign in error:', error);
+      setMessage("Sign in failed. Please try again.");
     }
-  }, [isConnected, address, chainId, connector, config]);
+  }, []);
 
   const handleAnalyzeWallet = useCallback(async () => {
-    if (!isConnected) {
-      setMessage("Please connect your wallet first");
+    if (!user) {
+      setMessage("Please sign in with Farcaster first");
       return;
     }
 
@@ -134,28 +102,13 @@ export default function App() {
     setMessage("");
     setAnalysisResults(null);
 
-    const walletClient = await getWalletClient(config, {
-      account: address,
-      chainId: chainId,
-      connector: connector,
-    });
-
-    if (!walletClient) {
-      setMessage("Wallet client not available");
-      setIsLoading(false);
-      return;
-    }
-
-    const fetchWithPayment = wrapFetchWithPayment(
-      fetch,
-      walletClient as unknown as Parameters<typeof wrapFetchWithPayment>[1]
-    );
-
     try {
-      const response = await fetchWithPayment("/api/analyze", {
+      // For x402 payment, we'll use a simple fetch since Farcaster handles the wallet
+      const response = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${user.token}`, // Use Farcaster auth
         },
         body: JSON.stringify({ address: targetAddress }),
       });
@@ -169,33 +122,42 @@ export default function App() {
       setMessage(`Analysis complete! Found ${data.longTermPositions?.length || 0} long-term positions.`);
     } catch (error) {
       console.error("Error analyzing wallet:", error);
-      setMessage(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      
+      let errorMessage = "Unknown error occurred";
+      if (error instanceof Error) {
+        if (error.message.includes("payment")) {
+          errorMessage = "Payment failed. Please ensure you have sufficient funds and try again.";
+        } else if (error.message.includes("network") || error.message.includes("RPC")) {
+          errorMessage = "Network error. Please check your connection and try again.";
+        } else if (error.message.includes("address")) {
+          errorMessage = "Invalid wallet address. Please check the address and try again.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setMessage(`Error: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, address, chainId, connector, config, targetAddress]);
+  }, [user, targetAddress]);
 
   const saveFrameButton = useMemo(() => {
     if (context && !context.client.added) {
       return (
         <button
           onClick={handleAddFrame}
-          className="text-blue-600 hover:text-blue-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+          className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all duration-200 border border-white/20"
         >
-          Save Frame
+          Save
         </button>
       );
     }
 
     if (frameAdded) {
       return (
-        <div className="flex items-center space-x-1 text-sm font-medium text-green-600 dark:text-green-400">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-          </svg>
-          <span>Saved</span>
+        <div className="px-4 py-2 bg-white/10 text-white text-sm font-medium rounded-lg border border-white/20">
+          ✓ Saved
         </div>
       );
     }
@@ -204,192 +166,217 @@ export default function App() {
   }, [context, frameAdded, handleAddFrame]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-[#0052ff] text-white">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-white">DeFi Tax Analyzer</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {isInMiniApp ? 'Running as Mini App' : 'Running in browser'}
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <div className="flex-shrink-0">
-                <Wallet className="z-10">
-                  <ConnectWallet>
-                    <Name className="text-inherit" />
-                  </ConnectWallet>
-                  <WalletDropdown>
-                    <Identity className="px-4 pt-3 pb-2" hasCopyAddressOnClick>
-                      <Avatar />
-                      <Name />
-                      <Address />
-                      <EthBalance />
-                    </Identity>
-                    <WalletDropdownDisconnect />
-                  </WalletDropdown>
-                </Wallet>
-              </div>
-              <div>{saveFrameButton}</div>
-            </div>
+      <header className="px-6 py-4">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <div className="text-lg font-semibold">
+            DeFi Tax Analyzer
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            {saveFrameButton}
+            {!user ? (
+              <button
+                onClick={handleSignIn}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all duration-200 border border-white/20"
+              >
+                Connect
+              </button>
+            ) : (
+              <button
+                onClick={() => setUser(null)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all duration-200 border border-white/20"
+              >
+                Disconnect
+              </button>
+            )}
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <main className="px-6 py-8">
+        <div className="max-w-4xl mx-auto">
           {/* Hero Section */}
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-              DeFi Long-Term Capital Gains Analyzer
-            </h2>
-            <p className="text-gray-600 dark:text-gray-300">
-              Analyze any wallet to find DeFi positions held for >1 year (eligible for long-term capital gains)
+          <div className="text-center mb-12">
+            <h1 className="text-5xl font-bold mb-4">
+              DeFi Tax Challenge
+            </h1>
+            <p className="text-xl text-white/80 mb-8">
+              Long-Term Capital Gains Analysis
             </p>
           </div>
 
-          {/* Connection Status */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Connection Status
-            </h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Wallet Connected:</span>
-                <span className={`font-medium ${isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {isConnected ? 'Yes' : 'No'}
-                </span>
-              </div>
-              {isConnected && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600 dark:text-gray-300">Address:</span>
-                    <span className="font-mono text-sm text-gray-900 dark:text-white">
-                      {address?.slice(0, 6)}...{address?.slice(-4)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600 dark:text-gray-300">Chain ID:</span>
-                    <span className="font-medium text-gray-900 dark:text-white">{chainId}</span>
-                  </div>
-                </>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Mini App Context:</span>
-                <span className={`font-medium ${isInMiniApp ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                  {isInMiniApp ? 'Yes' : 'No'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* DeFi Analysis */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Analyze Wallet for Long-Term Positions
-            </h3>
-            <p className="text-gray-600 dark:text-gray-300 mb-6">
-              Enter any Ethereum wallet address to analyze DeFi positions held for >1 year. Analysis costs $1.
-            </p>
+          {/* Analysis Details */}
+          <div className="mb-12">
+            <h2 className="text-2xl font-semibold mb-6">Analysis Details</h2>
             
-            {/* Wallet Address Input */}
-            <div className="mb-4">
-              <label htmlFor="wallet-address" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Wallet Address
-              </label>
-              <input
-                id="wallet-address"
-                type="text"
-                value={targetAddress}
-                onChange={(e) => setTargetAddress(e.target.value)}
-                placeholder="0x... or ENS name"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-              />
+            <div>
+              <p>
+                This app analyzes your DeFi positions to determine if you have any long-term positions that are eligible for tax optimization.
+              </p>
             </div>
 
-            <button
-              onClick={handleAnalyzeWallet}
-              disabled={!isConnected || isLoading || !targetAddress}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${!isConnected || isLoading || !targetAddress
-                ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed text-gray-500 dark:text-gray-400'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            {/* Wallet Input */}
+            <div>
+              <div className="mb-4">
+                <label htmlFor="wallet-address" className="block text-sm text-white/60 mb-2">
+                  Wallet Address
+                </label>
+                <input
+                  id="wallet-address"
+                  type="text"
+                  value={targetAddress}
+                  onChange={(e) => setTargetAddress(e.target.value)}
+                  placeholder="0x... or ENS name"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:border-white/40 transition-all duration-200"
+                />
+              </div>
+
+              <button
+                onClick={handleAnalyzeWallet}
+                disabled={!user || isLoading || !targetAddress}
+                className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
+                  !user || isLoading || !targetAddress
+                    ? 'bg-white/10 text-white/40 cursor-not-allowed border border-white/10'
+                    : 'bg-white text-[#0052ff] hover:bg-white/90 font-semibold'
                 }`}
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                  <span>Analyzing...</span>
+              >
+                {isLoading ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#0052ff] border-t-transparent"></div>
+                    <span>Analyzing...</span>
+                  </div>
+                ) : (
+                  'Analyze Positions ($1)'
+                )}
+              </button>
+            </div>
+
+            {/* Loading State */}
+            {isLoading && (
+              <div className="mb-8 p-6 bg-white/5 border border-white/10 rounded-lg">
+                <div className="flex items-center space-x-3 mb-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                  <div className="font-medium">Scanning Ethereum blockchain...</div>
                 </div>
-              ) : (
-                'Analyze Wallet ($1)'
-              )}
-            </button>
-            {message && (
-              <div className={`mt-4 p-4 rounded-lg border ${message.startsWith('Error')
-                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
-                : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
-                }`}>
-                <div className="flex items-center space-x-2">
-                  {message.startsWith('Error') ? (
-                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                  <span className="font-medium">{message}</span>
+                <div className="text-sm text-white/60">
+                  Analyzing token balances and transaction history for long-term positions
                 </div>
               </div>
             )}
 
-            {/* Results Display */}
-            {analysisResults && (
-              <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                  Analysis Results
-                </h4>
-                <div className="space-y-3">
-                  {analysisResults.longTermPositions?.length > 0 ? (
-                    analysisResults.longTermPositions.map((position, index) => (
-                      <div key={index} className="bg-white dark:bg-gray-800 p-3 rounded border">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium text-gray-900 dark:text-white">
-                            {position.symbol || 'Unknown Token'}
-                          </span>
-                          <span className="text-sm text-green-600 dark:text-green-400">
-                            Long-term ({position.daysHeld} days)
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                          Balance: {position.balance} | First acquired: {position.firstAcquired}
+            {/* Message Display */}
+            {message && (
+              <div className={`mb-8 p-4 rounded-lg border ${
+                message.startsWith('Error')
+                  ? 'bg-red-500/10 border-red-400/20 text-red-200'
+                  : 'bg-green-500/10 border-green-400/20 text-green-200'
+              }`}>
+                {message}
+              </div>
+            )}
+          </div>
+
+          {/* Results Section */}
+          {analysisResults && (
+            <div className="mb-12">
+              <h2 className="text-2xl font-semibold mb-6">Analysis Results</h2>
+              
+              {/* Summary Stats */}
+              <div className="grid md:grid-cols-3 gap-6 mb-8">
+                <div className="p-6 bg-white/5 border border-white/10 rounded-lg text-center">
+                  <div className="text-3xl font-bold text-green-300 mb-2">
+                    {analysisResults.summary?.totalLongTermPositions || 0}
+                  </div>
+                  <div className="text-sm text-white/60">Long-term Positions</div>
+                  <div className="text-xs text-white/40">(Held &gt;1 year)</div>
+                </div>
+                
+                <div className="p-6 bg-white/5 border border-white/10 rounded-lg text-center">
+                  <div className="text-3xl font-bold text-amber-300 mb-2">
+                    {analysisResults.summary?.totalShortTermPositions || 0}
+                  </div>
+                  <div className="text-sm text-white/60">Short-term Positions</div>
+                  <div className="text-xs text-white/40">(Held &lt;1 year)</div>
+                </div>
+
+                <div className="p-6 bg-white/5 border border-white/10 rounded-lg text-center">
+                  <div className="text-3xl font-bold text-blue-300 mb-2">
+                    {analysisResults.longTermPositions?.length || 0}
+                  </div>
+                  <div className="text-sm text-white/60">Eligible Tokens</div>
+                  <div className="text-xs text-white/40">For tax optimization</div>
+                </div>
+              </div>
+
+              {/* Long-term Positions List */}
+              {analysisResults.longTermPositions?.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="text-lg font-medium mb-4">Long-term Positions (Tax Optimized)</h3>
+                  <div className="space-y-4">
+                    {analysisResults.longTermPositions.map((position, index) => (
+                      <div key={index} className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-lg mb-1">
+                              {position.symbol || 'Unknown Token'}
+                            </div>
+                            <div className="text-sm text-white/60 mb-1">
+                              Balance: {parseFloat(position.balance).toLocaleString()}
+                            </div>
+                            <div className="text-sm text-white/60">
+                              First acquired: {position.firstAcquired}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="px-3 py-1 bg-green-500/20 text-green-300 text-sm font-medium rounded border border-green-400/20">
+                              {position.daysHeld} days
+                            </div>
+                            <div className="text-xs text-green-300 mt-1">
+                              ✓ Long-term eligible
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-600 dark:text-gray-300">
-                      No long-term positions found in this wallet.
-                    </p>
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+
+              {/* No positions found */}
+              {(!analysisResults.longTermPositions || analysisResults.longTermPositions.length === 0) && (
+                <div className="p-6 bg-amber-500/10 border border-amber-400/20 rounded-lg text-center">
+                  <div className="text-amber-300 text-lg mb-2">⚠️</div>
+                  <div className="font-medium mb-2">No long-term positions found</div>
+                  <div className="text-sm text-white/60">
+                    Analysis covers major ERC-20 tokens: USDC, WETH, WBTC, DAI, USDT
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Instructions */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">
-              How It Works
-            </h3>
-            <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-              <p>• Connect your wallet to pay for analysis with crypto</p>
-              <p>• Enter any Ethereum wallet address you want to analyze</p>
-              <p>• Pay $1 to get a comprehensive analysis of DeFi positions held >1 year</p>
-              <p>• Use results to optimize your tax strategy for long-term capital gains</p>
+          <div className="p-6 bg-white/5 border border-white/10 rounded-lg">
+            <h3 className="text-lg font-medium mb-4">How It Works</h3>
+            <div className="space-y-3 text-sm text-white/80">
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</div>
+                <div>Connect your Farcaster account to authenticate</div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</div>
+                <div>Enter any Ethereum wallet address for analysis</div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
+                <div>Pay $1 to get comprehensive DeFi position analysis</div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">4</div>
+                <div>Optimize your tax strategy with long-term capital gains insights</div>
+              </div>
             </div>
           </div>
         </div>

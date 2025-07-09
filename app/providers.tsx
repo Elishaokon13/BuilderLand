@@ -12,8 +12,8 @@ export function Providers({ children }: { children: ReactNode }) {
       config={{
         appearance: {
           mode: "auto",
-          theme: "mini-app-theme",
-          name: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME,
+          theme: "base",
+          name: process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_NAME || "DeFi Tax Analyzer",
           logo: process.env.NEXT_PUBLIC_ICON_URL,
         },
       }}

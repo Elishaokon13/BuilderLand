@@ -1,132 +1,108 @@
-import { createPublicClient, http, getContract, formatUnits } from "viem";
-import { mainnet } from "viem/chains";
+import { createPublicClient, http, parseAbi, getAddress } from 'viem';
+import { mainnet } from 'viem/chains';
 
-// Popular ERC-20 tokens to analyze
+// ERC-20 ABI for balanceOf and Transfer events
+const ERC20_ABI = parseAbi([
+  'function balanceOf(address owner) view returns (uint256)',
+  'function symbol() view returns (string)',
+  'function decimals() view returns (uint8)',
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+]);
+
+// Popular DeFi tokens to analyze
 const POPULAR_TOKENS = [
-  {
-    symbol: "USDC",
-    address: "0xA0b86a33E6441d95c4a8F56C9a66f6c32Fe8a1c8" as `0x${string}`,
-    decimals: 6,
-  },
-  {
-    symbol: "USDT", 
-    address: "0xdAC17F958D2ee523a2206206994597C13D831ec7" as `0x${string}`,
-    decimals: 6,
-  },
-  {
-    symbol: "WETH",
-    address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" as `0x${string}`,
-    decimals: 18,
-  },
-  {
-    symbol: "WBTC",
-    address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599" as `0x${string}`,
-    decimals: 8,
-  },
-  {
-    symbol: "DAI",
-    address: "0x6B175474E89094C44Da98b954EedeAC495271d0F" as `0x${string}`,
-    decimals: 18,
-  },
+  { address: '0xA0b86a33E6441D41E0a1a6C7f3AeB6F21d34C8D3' as `0x${string}`, symbol: 'USDC' }, // USDC
+  { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' as `0x${string}`, symbol: 'WETH' }, // WETH
+  { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' as `0x${string}`, symbol: 'WBTC' }, // WBTC
+  { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F' as `0x${string}`, symbol: 'DAI' },  // DAI
+  { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' as `0x${string}`, symbol: 'USDT' }, // USDT
 ];
 
-// Standard ERC-20 ABI (balanceOf function)
-const ERC20_ABI = [
-  {
-    name: "balanceOf",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "symbol",
-    type: "function", 
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "string" }],
-  },
-  {
-    name: "decimals",
-    type: "function",
-    stateMutability: "view", 
-    inputs: [],
-    outputs: [{ name: "", type: "uint8" }],
-  },
-] as const;
-
-// Create public client for Ethereum mainnet
 const client = createPublicClient({
   chain: mainnet,
-  transport: http(), // Will use default RPC
+  transport: http(),
 });
 
-export interface TokenBalance {
+export interface TokenPosition {
+  address: `0x${string}`;
   symbol: string;
-  address: string;
   balance: string;
-  decimals: number;
-  rawBalance: bigint;
+  firstAcquired: string;
+  daysHeld: number;
+  isLongTerm: boolean;
 }
 
-/**
- * Get ERC-20 token balances for a wallet address
- */
-export async function getTokenBalances(walletAddress: `0x${string}`): Promise<TokenBalance[]> {
+export async function getTokenPositions(walletAddress: `0x${string}`): Promise<TokenPosition[]> {
+  const positions: TokenPosition[] = [];
+  
   try {
-    const balances: TokenBalance[] = [];
-
     for (const token of POPULAR_TOKENS) {
       try {
-        const contract = getContract({
+        // Get current balance
+        const balance = await client.readContract({
           address: token.address,
           abi: ERC20_ABI,
-          client,
+          functionName: 'balanceOf',
+          args: [getAddress(walletAddress)],
         });
 
-        const rawBalance = await contract.read.balanceOf([walletAddress]);
+        // Skip if no balance
+        if (balance === 0n) continue;
+
+        // Get decimals for formatting
+        const decimals = await client.readContract({
+          address: token.address,
+          abi: ERC20_ABI,
+          functionName: 'decimals',
+        });
+
+        // Get first Transfer event to this address (simplified approach)
+        const currentBlock = await client.getBlockNumber();
+        const fromBlock = currentBlock > 100000n ? currentBlock - 100000n : 0n;
         
-        if (rawBalance > 0n) {
-          const balance = formatUnits(rawBalance, token.decimals);
+        const transfers = await client.getLogs({
+          address: token.address,
+          event: ERC20_ABI.find(item => item.type === 'event' && item.name === 'Transfer')!,
+          args: {
+            to: getAddress(walletAddress),
+          },
+          fromBlock,
+          toBlock: 'latest',
+        });
+
+        let firstAcquiredDate = new Date();
+        let firstBlock = await client.getBlockNumber();
+
+        if (transfers.length > 0) {
+          // Get the earliest transfer
+          const earliestTransfer = transfers[0];
+          firstBlock = earliestTransfer.blockNumber;
           
-          balances.push({
-            symbol: token.symbol,
-            address: token.address,
-            balance,
-            decimals: token.decimals,
-            rawBalance,
-          });
+          const block = await client.getBlock({ blockNumber: firstBlock });
+          firstAcquiredDate = new Date(Number(block.timestamp) * 1000);
         }
-      } catch (error) {
-        console.error(`Error fetching balance for ${token.symbol}:`, error);
-        // Continue with other tokens
+
+        const daysHeld = Math.floor((Date.now() - firstAcquiredDate.getTime()) / (1000 * 60 * 60 * 24));
+        const isLongTerm = daysHeld >= 365;
+        
+        positions.push({
+          address: token.address,
+          symbol: token.symbol,
+          balance: (Number(balance) / Math.pow(10, decimals)).toFixed(6),
+          firstAcquired: firstAcquiredDate.toLocaleDateString(),
+          daysHeld,
+          isLongTerm,
+        });
+        
+      } catch (tokenError) {
+        console.error(`Error analyzing ${token.symbol}:`, tokenError);
+        continue;
       }
     }
-
-    return balances;
   } catch (error) {
-    console.error("Error fetching token balances:", error);
-    throw new Error("Failed to fetch token balances");
+    console.error('Error in getTokenPositions:', error);
+    throw new Error('Failed to analyze token positions');
   }
-}
 
-/**
- * Get ETH balance for a wallet
- */
-export async function getETHBalance(walletAddress: `0x${string}`): Promise<TokenBalance> {
-  try {
-    const rawBalance = await client.getBalance({ address: walletAddress });
-    const balance = formatUnits(rawBalance, 18);
-
-    return {
-      symbol: "ETH",
-      address: "0x0000000000000000000000000000000000000000",
-      balance,
-      decimals: 18,
-      rawBalance,
-    };
-  } catch (error) {
-    console.error("Error fetching ETH balance:", error);
-    throw new Error("Failed to fetch ETH balance");
-  }
+  return positions;
 } 

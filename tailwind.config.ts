@@ -8,6 +8,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        'orbitron': ['var(--font-orbitron)', 'monospace'],
+      },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
